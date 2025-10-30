@@ -8,7 +8,7 @@
   "scripts": {
     "build": "prisma generate && next build",
     "dev": "next dev",
-    "prisma:deploy": "prisma migrate deploy",
+    "prisma:deploy": "NODE_OPTIONS='--experimental-json-modules' node ./scripts/prisma-deploy.mjs",
     "prisma:generate": "prisma generate",
     "setup": "NODE_OPTIONS='--experimental-json-modules' node ./scripts/setup.mjs",
     "start": "next start",
