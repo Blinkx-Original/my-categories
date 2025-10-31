@@ -96,6 +96,67 @@ mysql> create database tidb_labs_bookshop;
 export DATABASE_URL=mysql://user:pass@gateway01.us-west-2.prod.aws.tidbcloud.com:4000/tidb_labs_bookshop
 ```
 
+### Connectivity environment variables
+
+This starter now exposes smoke-test endpoints that require additional environment
+variables. **Never commit credentials to Git.** Configure them in your runtime
+environment (for example, Vercel project settings or a local `.env.local` that
+remains untracked).
+
+| Integration | Variables | Notes |
+| --- | --- | --- |
+| Cloudflare Images | `CF_IMAGES_ENABLED`, `CF_IMAGES_ACCOUNT_ID`, `CF_IMAGES_TOKEN`, `CF_IMAGES_BASE_URL` | When `CF_IMAGES_ENABLED` is not truthy or any other field is missing, the integration is skipped to avoid accidental calls. |
+| Cloudflare Cache & Purge | `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ENABLE_PURGE_ON_PUBLISH` (optional), `CLOUDFLARE_INCLUDE_PRODUCT_URLS` (optional), `NEXT_PUBLIC_SITE_URL` (fallback origin) | Zone ID and token are mandatory for any purge action. Toggles default to `false`. |
+| TiDB (Prisma & writes) | `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE`, optional `TIDB_SSL_MODE`, `TIDB_SSL_CA`, `TIDB_SSL_SERVER_NAME`, `TIDB_PRODUCTS_TABLE`, `TIDB_PRODUCTS_LASTMOD_COLUMN`, `TIDB_PRODUCTS_PUBLISHED_WHERE`, `TIDB_POSTS_TABLE`, `TIDB_CATEGORIES_TABLE` | TLS defaults to `skip-verify`. Embedded certificates support `\n` literals or Base64. Tables default to `products`, `posts`, and `categories`, but can be overridden for multi-schema deployments. |
+| Algolia | `ALGOLIA_APP_ID`, `ALGOLIA_ADMIN_API_KEY` (or `ALGOLIA_API_KEY`), `ALGOLIA_INDEX_PRIMARY` (or `ALGOLIA_INDEX`) | Admin keys stay server-side only. |
+| Admin dashboard | `ADMIN_PASSWORD` | Basic Auth password for `/admin` (username fixed to `admin`). Required to enable protected routes. |
+
+### Connectivity smoke tests
+
+After configuring the variables above you can trigger internal health checks:
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/admin/connectivity/cloudflare/test` | `GET` | Validates Cloudflare Images credentials. |
+| `/api/admin/connectivity/cloudflare/purge-sitemaps` | `POST` | Purges sitemap URLs (and optionally product pages) using Cloudflare Cache APIs. |
+| `/api/admin/connectivity/cloudflare/purge-last-batch` | `POST` | Replays the most recent sitemap/product purge batch for troubleshooting. |
+| `/api/admin/connectivity/cloudflare/purge-everything` | `POST` | Issues a `purge_everything` command to Cloudflare with guarded retries. |
+| `/api/admin/connectivity/tidb` | `GET` | Runs `SELECT 1` and basic publication counts against TiDB. |
+| `/api/admin/connectivity/tidb/update` | `POST` | Updates `title_h1`, `short_summary` and/or `desc_html` for a product slug and returns the TiDB snapshot. |
+| `/api/admin/connectivity/algolia` | `POST` | Confirms the target Algolia index exists and records latency. |
+| `/api/admin/connectivity/revalidate-sitemap` | `POST` | Fetches the public sitemap to verify CDN revalidation and domain resolution. |
+
+Each endpoint logs structured results (without exposing secrets) so you can
+verify latency, `cf-ray` identifiers, and standardized error codes before the
+UI layer is implemented.
+
+### Admin dashboard
+
+- Visit `/admin` after deploying credentials above to access the Connectivity
+  tab. The area is protected via Basic Auth using the fixed username `admin`
+  and the password stored in `ADMIN_PASSWORD`. Missing credentials result in a
+  `503` response.
+- A successful login issues the `vpp-admin-auth` HTTP-only cookie (valid for 12
+  hours) and the UI reuses the same session token for in-app API calls.
+- Manual controls are available for Cloudflare smoke tests, sitemap purges,
+  TiDB connectivity checks, Algolia index verification, and sitemap
+  revalidation with status badges and structured activity logs.
+- The TiDB card también incluye un formulario "Write Test (TiDB Update)" para
+  enviar cambios de `title_h1`, `short_summary` o `desc_html`, mostrando las
+  filas afectadas y un previsualizador JSON del registro en TiDB.
+
+### Admin write APIs
+
+- `POST /api/admin/products` — Actualiza un producto existente en TiDB usando
+  el slug como identificador inmutable y sincroniza rutas `/p/{slug}` y
+  categorías relacionadas.
+- `POST /api/admin/connectivity/tidb/update` — Versión acotada para smoke tests
+  que sólo permite modificar `title_h1`, `short_summary` y `desc_html` desde la
+  pestaña Connectivity.
+- `PUT /api/blog/posts/[slug]` — Reescribe entradas de blog conservando el slug
+  publicado, validando categorías y revalidando `/b/{slug}` junto a
+  `/bc/{category}` tras cada actualización.
+
 ### Build the project
 
 ```bash
