@@ -96,6 +96,35 @@ mysql> create database tidb_labs_bookshop;
 export DATABASE_URL=mysql://user:pass@gateway01.us-west-2.prod.aws.tidbcloud.com:4000/tidb_labs_bookshop
 ```
 
+### Connectivity environment variables
+
+This starter now exposes smoke-test endpoints that require additional environment
+variables. **Never commit credentials to Git.** Configure them in your runtime
+environment (for example, Vercel project settings or a local `.env.local` that
+remains untracked).
+
+| Integration | Variables | Notes |
+| --- | --- | --- |
+| Cloudflare Images | `CF_IMAGES_ENABLED`, `CF_IMAGES_ACCOUNT_ID`, `CF_IMAGES_TOKEN`, `CF_IMAGES_BASE_URL` | When `CF_IMAGES_ENABLED` is not truthy or any other field is missing, the integration is skipped to avoid accidental calls. |
+| Cloudflare Cache & Purge | `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ENABLE_PURGE_ON_PUBLISH` (optional), `CLOUDFLARE_INCLUDE_PRODUCT_URLS` (optional), `NEXT_PUBLIC_SITE_URL` (fallback origin) | Zone ID and token are mandatory for any purge action. Toggles default to `false`. |
+| TiDB (Prisma) | `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE`, optional `TIDB_SSL_MODE`, `TIDB_SSL_CA`, `TIDB_SSL_SERVER_NAME` | TLS defaults to `skip-verify`. Embedded certificates support `\n` literals or Base64. |
+| Algolia | `ALGOLIA_APP_ID`, `ALGOLIA_ADMIN_API_KEY` (or `ALGOLIA_API_KEY`), `ALGOLIA_INDEX_PRIMARY` (or `ALGOLIA_INDEX`) | Admin keys stay server-side only. |
+
+### Connectivity smoke tests
+
+After configuring the variables above you can trigger internal health checks:
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/admin/connectivity/cloudflare/test` | `GET` | Validates Cloudflare Images credentials. |
+| `/api/admin/connectivity/cloudflare/purge-sitemaps` | `POST` | Purges sitemap URLs (and optionally product pages) using Cloudflare Cache APIs. |
+| `/api/admin/connectivity/tidb` | `GET` | Runs `SELECT 1` and basic publication counts against TiDB. |
+| `/api/admin/connectivity/algolia` | `POST` | Confirms the target Algolia index exists and records latency. |
+
+Each endpoint logs structured results (without exposing secrets) so you can
+verify latency, `cf-ray` identifiers, and standardized error codes before the
+UI layer is implemented.
+
 ### Build the project
 
 ```bash
