@@ -107,7 +107,7 @@ remains untracked).
 | --- | --- | --- |
 | Cloudflare Images | `CF_IMAGES_ENABLED`, `CF_IMAGES_ACCOUNT_ID`, `CF_IMAGES_TOKEN`, `CF_IMAGES_BASE_URL` | When `CF_IMAGES_ENABLED` is not truthy or any other field is missing, the integration is skipped to avoid accidental calls. |
 | Cloudflare Cache & Purge | `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ENABLE_PURGE_ON_PUBLISH` (optional), `CLOUDFLARE_INCLUDE_PRODUCT_URLS` (optional), `NEXT_PUBLIC_SITE_URL` (fallback origin) | Zone ID and token are mandatory for any purge action. Toggles default to `false`. |
-| TiDB (Prisma) | `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE`, optional `TIDB_SSL_MODE`, `TIDB_SSL_CA`, `TIDB_SSL_SERVER_NAME` | TLS defaults to `skip-verify`. Embedded certificates support `\n` literals or Base64. |
+| TiDB (Prisma) | `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE`, optional `TIDB_SSL_MODE`, `TIDB_SSL_CA`, `TIDB_SSL_SERVER_NAME`, `TIDB_PRODUCTS_TABLE`, `TIDB_PRODUCTS_LASTMOD_COLUMN`, `TIDB_PRODUCTS_PUBLISHED_WHERE` | TLS defaults to `skip-verify`. Embedded certificates support `\n` literals or Base64. Product metrics default to the `products` table and `updated_at` column but can be overridden when schemas differ. |
 | Algolia | `ALGOLIA_APP_ID`, `ALGOLIA_ADMIN_API_KEY` (or `ALGOLIA_API_KEY`), `ALGOLIA_INDEX_PRIMARY` (or `ALGOLIA_INDEX`) | Admin keys stay server-side only. |
 | Admin dashboard | `ADMIN_PASSWORD` | Basic Auth password for `/admin` (username fixed to `admin`). Required to enable protected routes. |
 

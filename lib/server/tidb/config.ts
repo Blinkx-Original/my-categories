@@ -15,6 +15,12 @@ export interface TiDbCredentials {
   serverName?: string;
 }
 
+export interface TiDbProductMetricsConfig {
+  table: string;
+  lastmodColumn: string;
+  whereClause?: string;
+}
+
 export function loadTiDbCredentials(): TiDbCredentials | null {
   const host = readEnv('TIDB_HOST');
   const port = readEnv('TIDB_PORT');
@@ -39,6 +45,14 @@ export function loadTiDbCredentials(): TiDbCredentials | null {
     sslMode,
     ca: sslCa ?? undefined,
     serverName: serverName ?? undefined,
+  };
+}
+
+export function loadTiDbProductMetricsConfig(): TiDbProductMetricsConfig {
+  return {
+    table: readEnv('TIDB_PRODUCTS_TABLE') ?? 'products',
+    lastmodColumn: readEnv('TIDB_PRODUCTS_LASTMOD_COLUMN') ?? 'updated_at',
+    whereClause: readEnv('TIDB_PRODUCTS_PUBLISHED_WHERE') ?? undefined,
   };
 }
 
