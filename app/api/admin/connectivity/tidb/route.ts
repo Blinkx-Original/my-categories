@@ -43,24 +43,27 @@ export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
     const [aggregate] = await prisma.$queryRawUnsafe<
-      { published: number; lastmod: Date | null }[]
+      { published: number | bigint | string | null; lastmod: Date | string | null }[]
     >(metricsQuery);
 
     const latency = Date.now() - startedAt;
+
+    const published = normalizePublished(aggregate?.published);
+    const lastmod = normalizeLastmod(aggregate?.lastmod);
 
     const payload = {
       ok: true,
       latency_ms: latency,
       ray_ids: [],
-      published: aggregate?.published ?? 0,
-      lastmod: aggregate?.lastmod ?? null,
+      published,
+      lastmod,
     } as const;
 
     console.info('tidb_connectivity_result', {
       ok: true,
       latencyMs: latency,
-      published: payload.published,
-      lastmod: payload.lastmod,
+      published,
+      lastmod,
     });
 
     return NextResponse.json(payload);
@@ -94,6 +97,56 @@ function buildMetricsQuery(config: ReturnType<typeof loadTiDbProductMetricsConfi
     return base;
   }
   return `${base} WHERE ${where}`;
+}
+
+function normalizePublished(value: number | bigint | string | null | undefined): number {
+  if (value == null) {
+    return 0;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value);
+    if (!Number.isFinite(asNumber)) {
+      console.warn('tidb_connectivity_bigint_overflow', { value: value.toString() });
+      return Number.MAX_SAFE_INTEGER;
+    }
+    return asNumber;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  console.warn('tidb_connectivity_unexpected_published_type', {
+    value,
+    type: typeof value,
+  });
+  return 0;
+}
+
+function normalizeLastmod(value: Date | string | null | undefined): string | null {
+  if (value == null) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.valueOf())) {
+    return parsed.toISOString();
+  }
+
+  console.warn('tidb_connectivity_unexpected_lastmod_type', { value, type: typeof value });
+  return null;
 }
 
 function quoteIdentifier(value: string, kind: 'table' | 'column'): string {
