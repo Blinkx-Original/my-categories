@@ -109,6 +109,7 @@ remains untracked).
 | Cloudflare Cache & Purge | `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ENABLE_PURGE_ON_PUBLISH` (optional), `CLOUDFLARE_INCLUDE_PRODUCT_URLS` (optional), `NEXT_PUBLIC_SITE_URL` (fallback origin) | Zone ID and token are mandatory for any purge action. Toggles default to `false`. |
 | TiDB (Prisma) | `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE`, optional `TIDB_SSL_MODE`, `TIDB_SSL_CA`, `TIDB_SSL_SERVER_NAME` | TLS defaults to `skip-verify`. Embedded certificates support `\n` literals or Base64. |
 | Algolia | `ALGOLIA_APP_ID`, `ALGOLIA_ADMIN_API_KEY` (or `ALGOLIA_API_KEY`), `ALGOLIA_INDEX_PRIMARY` (or `ALGOLIA_INDEX`) | Admin keys stay server-side only. |
+| Admin dashboard | `ADMIN_PASSWORD` | Basic Auth password for `/admin` (username fixed to `admin`). Required to enable protected routes. |
 
 ### Connectivity smoke tests
 
@@ -118,12 +119,27 @@ After configuring the variables above you can trigger internal health checks:
 | --- | --- | --- |
 | `/api/admin/connectivity/cloudflare/test` | `GET` | Validates Cloudflare Images credentials. |
 | `/api/admin/connectivity/cloudflare/purge-sitemaps` | `POST` | Purges sitemap URLs (and optionally product pages) using Cloudflare Cache APIs. |
+| `/api/admin/connectivity/cloudflare/purge-last-batch` | `POST` | Replays the most recent sitemap/product purge batch for troubleshooting. |
+| `/api/admin/connectivity/cloudflare/purge-everything` | `POST` | Issues a `purge_everything` command to Cloudflare with guarded retries. |
 | `/api/admin/connectivity/tidb` | `GET` | Runs `SELECT 1` and basic publication counts against TiDB. |
 | `/api/admin/connectivity/algolia` | `POST` | Confirms the target Algolia index exists and records latency. |
+| `/api/admin/connectivity/revalidate-sitemap` | `POST` | Fetches the public sitemap to verify CDN revalidation and domain resolution. |
 
 Each endpoint logs structured results (without exposing secrets) so you can
 verify latency, `cf-ray` identifiers, and standardized error codes before the
 UI layer is implemented.
+
+### Admin dashboard
+
+- Visit `/admin` after deploying credentials above to access the Connectivity
+  tab. The area is protected via Basic Auth using the fixed username `admin`
+  and the password stored in `ADMIN_PASSWORD`. Missing credentials result in a
+  `503` response.
+- A successful login issues the `vpp-admin-auth` HTTP-only cookie (valid for 12
+  hours) and the UI reuses the same session token for in-app API calls.
+- Manual controls are available for Cloudflare smoke tests, sitemap purges,
+  TiDB connectivity checks, Algolia index verification, and sitemap
+  revalidation with status badges and structured activity logs.
 
 ### Build the project
 

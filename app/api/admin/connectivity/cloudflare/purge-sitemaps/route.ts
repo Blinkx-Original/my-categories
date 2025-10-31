@@ -9,6 +9,7 @@ import {
   purgeCloudflareUrls,
   resolveSiteUrl,
 } from '@/lib/server/cloudflare/purge';
+import { recordCloudflarePurgeBatch } from '@/lib/server/cloudflare/state';
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +38,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const results = await purgeCloudflareUrls(Array.from(urlSet), config);
+    const urls = Array.from(urlSet);
+    recordCloudflarePurgeBatch(urls);
+
+    const results = await purgeCloudflareUrls(urls, config);
 
     const rayIds = results.flatMap((result) => result.rayIds);
     const latency = results.reduce((acc, result) => acc + result.latencyMs, 0);

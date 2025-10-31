@@ -223,6 +223,118 @@ export async function purgeCloudflareUrls(
   return results;
 }
 
+export async function purgeCloudflareEverything(
+  config = getCloudflarePurgeConfig()
+): Promise<PurgeResult> {
+  if (!config) {
+    throw new MissingCloudflarePurgeEnvError();
+  }
+
+  const url = `${API_BASE_URL}/zones/${config.zoneId}/purge_cache`;
+  const rayIds: string[] = [];
+  let attempts = 0;
+
+  while (attempts < 2) {
+    attempts += 1;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25_000);
+    const startedAt = Date.now();
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ purge_everything: true }),
+        signal: controller.signal,
+      });
+
+      const latencyMs = Date.now() - startedAt;
+      const rayId = response.headers.get('cf-ray') ?? undefined;
+      if (rayId) {
+        rayIds.push(rayId);
+      }
+
+      if ((response.status >= 500 || response.status === 524) && attempts < 2) {
+        console.warn('cloudflare_purge_everything_retry', {
+          attempt: attempts,
+          status: response.status,
+          zone: obfuscateId(config.zoneId),
+          rayId,
+        });
+        clearTimeout(timeout);
+        continue;
+      }
+
+      const data = await safeParseJson(response);
+      clearTimeout(timeout);
+
+      const result: PurgeResult = {
+        ok: response.ok,
+        status: response.status,
+        rayIds,
+        attempts,
+        latencyMs,
+        mode: 'purge_everything',
+        error: response.ok ? undefined : data,
+      };
+
+      const logger = response.ok ? console.info : console.warn;
+      logger('cloudflare_purge_everything', {
+        ok: result.ok,
+        status: result.status,
+        rayIds,
+        attempts,
+        latencyMs,
+        zone: obfuscateId(config.zoneId),
+      });
+
+      return result;
+    } catch (error) {
+      clearTimeout(timeout);
+      const latencyMs = Date.now() - startedAt;
+      const isAbort = (error as Error)?.name === 'AbortError';
+
+      if (attempts < 2 && isAbort) {
+        console.warn('cloudflare_purge_everything_timeout_retry', {
+          attempt: attempts,
+          zone: obfuscateId(config.zoneId),
+          error: (error as Error)?.message,
+        });
+        continue;
+      }
+
+      console.error('cloudflare_purge_everything_failed', {
+        zone: obfuscateId(config.zoneId),
+        attempts,
+        error: (error as Error)?.message,
+      });
+
+      return {
+        ok: false,
+        status: 0,
+        rayIds,
+        attempts,
+        latencyMs,
+        mode: 'purge_everything',
+        error,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    status: 0,
+    rayIds,
+    attempts: 2,
+    latencyMs: 0,
+    mode: 'purge_everything',
+    error: new Error('Failed to purge Cloudflare cache'),
+  };
+}
+
 export async function purgeOnPublish(options: {
   request?: NextRequest;
   productSlugs?: string[];
