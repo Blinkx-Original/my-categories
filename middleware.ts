@@ -15,7 +15,15 @@ function needsAdminAuth(pathname: string): boolean {
     return true;
   }
 
-  return pathname.startsWith('/admin/') || pathname.startsWith('/api/admin');
+  if (pathname.startsWith('/admin/') || pathname.startsWith('/api/admin')) {
+    return true;
+  }
+
+  if (pathname.startsWith('/api/blog/posts')) {
+    return true;
+  }
+
+  return false;
 }
 
 function readAdminPassword(): string | null {
@@ -120,5 +128,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: ['/admin/:path*', '/api/admin/:path*', '/api/blog/posts/:path*'],
 };

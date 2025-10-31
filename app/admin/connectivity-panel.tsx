@@ -45,6 +45,15 @@ interface TidbResult {
   details?: string;
 }
 
+interface TidbWriteResult {
+  status: ActionStatus;
+  timestamp?: string;
+  rowsAffected?: number;
+  product?: Record<string, unknown> | null;
+  errorCode?: string;
+  details?: string;
+}
+
 interface AlgoliaResult {
   status: ActionStatus;
   timestamp?: string;
@@ -77,6 +86,10 @@ const CLOUD_FLARE_ENDPOINTS: Record<CloudflareAction, { url: string; method: 'GE
 };
 
 const TIDB_ENDPOINT = { url: '/api/admin/connectivity/tidb', method: 'GET' as const };
+const TIDB_WRITE_ENDPOINT = {
+  url: '/api/admin/connectivity/tidb/update',
+  method: 'POST' as const,
+};
 const ALGOLIA_ENDPOINT = {
   url: '/api/admin/connectivity/algolia',
   method: 'POST' as const,
@@ -135,6 +148,14 @@ function formatRayIds(rayIds: string[]): string {
   return rayIds.join(', ');
 }
 
+function formatJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (_error) {
+    return String(value);
+  }
+}
+
 function getCloudflareActionLabel(action: CloudflareAction): string {
   switch (action) {
     case 'test':
@@ -188,9 +209,28 @@ export default function ConnectivityPanel(props: ConnectivityPanelProps) {
     hasRecordedBatch: false,
   }));
 
+  const [tidbWriteForm, setTidbWriteForm] = useState({
+    slug: '',
+    title_h1: '',
+    short_summary: '',
+    desc_html: '',
+  });
+  const [tidbWriteState, setTidbWriteState] = useState<TidbWriteResult>({ status: 'idle' });
   const [tidbState, setTidbState] = useState<TidbResult>({ status: 'idle' });
   const [algoliaState, setAlgoliaState] = useState<AlgoliaResult>({ status: 'idle' });
   const [revalidateState, setRevalidateState] = useState<RevalidateResult>({ status: 'idle' });
+
+  const canSubmitTidbWrite = useMemo(() => {
+    const slug = tidbWriteForm.slug.trim();
+    if (!slug) {
+      return false;
+    }
+    return (
+      tidbWriteForm.title_h1.trim().length > 0 ||
+      tidbWriteForm.short_summary.trim().length > 0 ||
+      tidbWriteForm.desc_html.trim().length > 0
+    );
+  }, [tidbWriteForm]);
 
   const callEndpoint = useCallback(
     async <T extends Record<string, unknown>>(
@@ -297,6 +337,13 @@ export default function ConnectivityPanel(props: ConnectivityPanelProps) {
     [callEndpoint]
   );
 
+  const updateTidbWriteField = useCallback(
+    (field: keyof typeof tidbWriteForm, value: string) => {
+      setTidbWriteForm((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
+
   const testTidb = useCallback(async () => {
     setTidbState((prev) => ({ ...prev, status: 'loading' }));
     try {
@@ -329,6 +376,66 @@ export default function ConnectivityPanel(props: ConnectivityPanelProps) {
       });
     }
   }, [callEndpoint]);
+
+  const submitTidbWrite = useCallback(async () => {
+    const payload: Record<string, string> = { slug: tidbWriteForm.slug.trim() };
+    if (tidbWriteForm.title_h1.trim().length > 0) {
+      payload.title_h1 = tidbWriteForm.title_h1.trim();
+    }
+    if (tidbWriteForm.short_summary.trim().length > 0) {
+      payload.short_summary = tidbWriteForm.short_summary.trim();
+    }
+    if (tidbWriteForm.desc_html.trim().length > 0) {
+      payload.desc_html = tidbWriteForm.desc_html;
+    }
+
+    setTidbWriteState({ status: 'loading' });
+
+    try {
+      const data = await callEndpoint<{ rows_affected?: number; product?: Record<string, unknown> }>(
+        TIDB_WRITE_ENDPOINT.url,
+        TIDB_WRITE_ENDPOINT.method,
+        payload
+      );
+      const timestamp = new Date().toISOString();
+
+      if (!data.ok) {
+        console.warn('tidb_write_test_failure', {
+          slug: payload.slug,
+          errorCode: data.error_code,
+        });
+        setTidbWriteState({
+          status: 'error',
+          timestamp,
+          rowsAffected: typeof data.rows_affected === 'number' ? data.rows_affected : undefined,
+          product: (data.product as Record<string, unknown> | undefined) ?? null,
+          errorCode: data.error_code,
+          details: typeof data.details === 'string' ? data.details : undefined,
+        });
+        return;
+      }
+
+      console.info('tidb_write_test_success', {
+        slug: payload.slug,
+        rowsAffected: data.rows_affected,
+      });
+
+      setTidbWriteState({
+        status: 'success',
+        timestamp,
+        rowsAffected: typeof data.rows_affected === 'number' ? data.rows_affected : undefined,
+        product: (data.product as Record<string, unknown> | undefined) ?? null,
+      });
+    } catch (error) {
+      console.error('tidb_write_test_failed', { error: (error as Error)?.message });
+      setTidbWriteState({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        errorCode: 'network_error',
+        details: (error as Error)?.message,
+      });
+    }
+  }, [callEndpoint, tidbWriteForm.desc_html, tidbWriteForm.short_summary, tidbWriteForm.slug, tidbWriteForm.title_h1]);
 
   const testAlgolia = useCallback(async () => {
     setAlgoliaState((prev) => ({ ...prev, status: 'loading' }));
@@ -574,6 +681,95 @@ export default function ConnectivityPanel(props: ConnectivityPanelProps) {
           >
             {tidbState.status === 'loading' ? 'Testing…' : 'Test TiDB Connection'}
           </button>
+
+          <div className="write-test">
+            <div className="write-test-header">
+              <div>
+                <h3 className="write-test-title">Write Test (TiDB Update)</h3>
+                <p className="write-test-description">
+                  Actualiza campos básicos para un producto existente usando su slug.
+                </p>
+              </div>
+              <span className={getStatusClass(tidbWriteState.status)}>
+                {getStatusLabel(tidbWriteState.status)}
+              </span>
+            </div>
+
+            <div className="write-grid">
+              <label className="admin-field">
+                <span className="admin-field-label">Slug del producto</span>
+                <input
+                  className="admin-input"
+                  placeholder="ej. 3-water-style-butterfly-valve-apdm-seals-and-db-acting-pneum-actuator"
+                  value={tidbWriteForm.slug}
+                  onChange={(event) => updateTidbWriteField('slug', event.target.value)}
+                />
+              </label>
+              <label className="admin-field">
+                <span className="admin-field-label">title_h1</span>
+                <input
+                  className="admin-input"
+                  placeholder="Título nuevo principal"
+                  value={tidbWriteForm.title_h1}
+                  onChange={(event) => updateTidbWriteField('title_h1', event.target.value)}
+                />
+              </label>
+              <label className="admin-field">
+                <span className="admin-field-label">short_summary</span>
+                <input
+                  className="admin-input"
+                  placeholder="Resumen corto del producto"
+                  value={tidbWriteForm.short_summary}
+                  onChange={(event) => updateTidbWriteField('short_summary', event.target.value)}
+                />
+              </label>
+              <label className="admin-field admin-field-full">
+                <span className="admin-field-label">desc_html</span>
+                <textarea
+                  className="admin-textarea"
+                  rows={4}
+                  placeholder="Descripción HTML del producto"
+                  value={tidbWriteForm.desc_html}
+                  onChange={(event) => updateTidbWriteField('desc_html', event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="write-actions">
+              <button
+                type="button"
+                className="admin-button"
+                onClick={submitTidbWrite}
+                disabled={!tidbConfigured || !canSubmitTidbWrite || tidbWriteState.status === 'loading'}
+              >
+                {tidbWriteState.status === 'loading' ? 'Updating…' : 'Update Product in TiDB'}
+              </button>
+              <span className="metric-secondary">
+                Último intento: {tidbWriteState.timestamp ? formatTimestampLabel(tidbWriteState.timestamp) : '—'}
+              </span>
+            </div>
+
+            {tidbWriteState.status === 'success' && (
+              <div className="success-block">
+                Producto actualizado correctamente
+                {typeof tidbWriteState.rowsAffected === 'number'
+                  ? ` · Filas afectadas: ${tidbWriteState.rowsAffected}`
+                  : ''}
+                .
+              </div>
+            )}
+
+            {tidbWriteState.status === 'error' && tidbWriteState.errorCode && (
+              <div className="error-block">
+                Código: {tidbWriteState.errorCode}
+                {tidbWriteState.details ? ` — ${tidbWriteState.details}` : ''}
+              </div>
+            )}
+
+            {tidbWriteState.product && (
+              <pre className="json-preview">{formatJson(tidbWriteState.product)}</pre>
+            )}
+          </div>
 
           {!tidbConfigured && (
             <div className="warning-block">
